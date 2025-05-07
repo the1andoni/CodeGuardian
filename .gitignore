@@ -1,0 +1,46 @@
+# Python spezifische Dateien
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtuelle Umgebungen
+env/
+venv/
+ENV/
+*.env
+*.venv
+
+# Log-Dateien
+logs/
+*.log
+
+# JSON-Daten (Persistenz)
+data/sent_pull_requests.json
+
+# Konfigurationsdateien
+config.yaml
+
+# Cache-Dateien und temporäre Dateien
+*.tmp
+*.swp
+*.swo
+
+# Bytecode-Dateien und Distributionen
+*.egg-info/
+dist/
+build/
+
+# IDE-spezifische Dateien
+.vscode/
+.idea/
+*.iml
+
+# Test Coverage Dateien
+.coverage
+*.cover
+
+# Sonstige Dateien
+.DS_Store
+Thumbs.db

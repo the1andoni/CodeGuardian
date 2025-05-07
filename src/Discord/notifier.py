@@ -81,6 +81,7 @@ async def repo(interaction: discord.Interaction, repo_name: str):
         embed.add_field(name="Stars", value=repo_data['stargazers_count'], inline=True)
         embed.add_field(name="Forks", value=repo_data['forks_count'], inline=True)
         embed.add_field(name="Offene Issues", value=repo_data['open_issues_count'], inline=True)
+        embed.set_thumbnail(url=repo_data['owner']['avatar_url'])  # Profilbild des Owners
         await interaction.response.send_message(embed=embed)
     else:
         embed = discord.Embed(

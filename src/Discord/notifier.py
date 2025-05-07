@@ -42,7 +42,20 @@ sent_pull_requests = load_json(SENT_PULL_REQUESTS_FILE)
 async def on_ready():
     logger.info("Bot is online as %s", bot.user)
     print(f"Bot is online as {bot.user}")
+
+    # Setze den Status und die Aktivität des Bots
+    activity = discord.Game("Überwacht die Repositories")
+    await bot.change_presence(status=discord.Status.online, activity=activity)
+
     check_pull_requests.start()  # Startet die Überwachung von Pull Requests
+
+@bot.event
+async def on_message(message):
+    if message.guild:  # Nachricht stammt von einem Server
+        print(f"Nachricht auf Server {message.guild.name}: {message.content}")
+    else:  # Nachricht stammt aus einer PN
+        print(f"Nachricht in PN: {message.content}")
+    await bot.process_commands(message)  # Ermöglicht die Verarbeitung von Befehlen
 
 @bot.command()
 async def status(ctx):
@@ -51,6 +64,11 @@ async def status(ctx):
 @bot.command()
 async def repo(ctx, repo_name: str):
     """Gibt Informationen zu einem Repository zurück."""
+    # Falls kein "owner/" im Namen enthalten ist, füge den Standard-Owner hinzu
+    if "/" not in repo_name:
+        default_owner = "the1andoni"  # Ersetze dies durch deinen GitHub-Benutzernamen
+        repo_name = f"{default_owner}/{repo_name}"
+
     url = f"https://api.github.com/repos/{repo_name}"
     response = requests.get(url, headers=headers)
     if response.status_code == 200:
@@ -71,6 +89,7 @@ async def check_pull_requests():
     channel = bot.get_channel(int(discord_channel_id))
     if not channel:
         logger.error("Ungültige Discord-Kanal-ID: %s", discord_channel_id)
+        await bot.change_presence(status=discord.Status.dnd, activity=discord.Game("Fehler: Kanal nicht gefunden"))
         return
 
     for repo in repositories:
@@ -116,6 +135,7 @@ async def check_pull_requests():
                 repo,
                 response.status_code,
             )
+            await bot.change_presence(status=discord.Status.dnd, activity=discord.Game("Fehler: API-Problem"))
 
 # Startet den Bot
 bot.run(config["discord"]["token"])

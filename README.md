@@ -8,7 +8,8 @@ CodeGuardian ist ein Bot, der entwickelt wurde, um automatisierte Aufgaben auf G
 - **Code-Qualitätsprüfung**: Überprüft geänderte Dateien in Pull Requests mit `flake8`.
 - **Sicherheitsprüfung**: Erkennt Sicherheitslücken in geänderten Dateien mit `bandit`.
 - **Discord-Benachrichtigungen**: Sendet Ergebnisse der Prüfungen in einen Discord-Channel.
-- **Interaktive Befehle**: Unterstützt Befehle wie `!status` und `!repo <repository_name>` im Discord-Channel.
+- **Slash-Befehle**: Unterstützt Befehle wie `/status` und `/repo <repository_name>` im Discord-Channel.
+- **Profilbild des Repository-Owners**: Zeigt das Profilbild des Repository-Owners im `/repo`-Befehl an.
 - **Persistenz mit JSON**: Speichert gesendete Pull Requests in einer JSON-Datei, um doppelte Benachrichtigungen zu vermeiden.
 - **Logging**: Protokolliert alle Ereignisse (z. B. neue Pull Requests, Fehler) in einer Log-Datei im Ordner `logs`.
 
@@ -18,7 +19,7 @@ CodeGuardian ist ein Bot, der entwickelt wurde, um automatisierte Aufgaben auf G
 CodeGuardian
 ├── src
 │   ├── bot.py                # Hauptdatei zum Starten des Bots
-|   ├── config.yaml           # Konfigurationsdatei für den Bot
+│   ├── config.yaml           # Konfigurationsdatei für den Bot
 │   ├── github
 │   │   ├── __init__.py       # Initialisierung des GitHub-Moduls
 │   │   └── monitor.py        # Überwachung und Analyse von Pull Requests
@@ -63,6 +64,24 @@ CodeGuardian
    ```bash
    python src/bot.py
    ```
+
+## Slash-Befehle
+- **`/status`**: Zeigt den aktuellen Status des Bots an.
+- **`/repo <repository_name>`**: Zeigt Informationen zu einem GitHub-Repository an. Falls kein vollständiger Name (`owner/repo`) angegeben wird, wird `the1andoni` als Standard-Owner verwendet.
+
+### Beispiel für `/repo`:
+- Eingabe:
+  ```bash
+  /repo CodeGuardian
+  ```
+- Ausgabe (Embed):
+  - **Titel**: Repository: `the1andoni/CodeGuardian`
+  - **Beschreibung**: Beschreibung des Repositories (oder "Keine Beschreibung").
+  - **Felder**:
+    - Stars
+    - Forks
+    - Offene Issues
+  - **Thumbnail**: Profilbild des Repository-Owners.
 
 ## Logging
 - Alle Ereignisse werden in einer Log-Datei gespeichert, die sich im Ordner `logs` befindet.

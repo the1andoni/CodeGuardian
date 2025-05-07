@@ -1,0 +1,112 @@
+import subprocess
+import json
+import yaml
+import os 
+from flake8.api import legacy as flake8
+from black import format_file_in_place, FileMode
+from bandit.core import manager as bandit_manager
+from utils.logger import logger
+
+base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+config_path = os.path.join(base_dir, "config.yaml")
+# Konfiguration laden
+def load_config():
+       with open(config_path, "r") as file:
+        return yaml.safe_load(file)
+
+config = load_config()
+
+def format_message(title, url, author):
+    """Formatiert eine Nachricht für Pull-Request-Benachrichtigungen."""
+    return f"**{title}**\nSubmitted by: {author}\nView Pull Request: {url}"
+
+def extract_repo_info(pull_request):
+    """Extrahiert relevante Informationen aus einem Pull Request."""
+    return {
+        "title": pull_request.get("title"),
+        "url": pull_request.get("html_url"),
+        "author": pull_request.get("user", {}).get("login")
+    }
+
+def is_valid_pull_request(pull_request):
+    """Überprüft, ob ein Pull Request gültig ist (offen und kein Entwurf)."""
+    return pull_request.get("state") == "open" and pull_request.get("draft") is False
+
+def handle_api_error(response):
+    """Behandelt API-Fehler und gibt eine aussagekräftige Fehlermeldung aus."""
+    if response.status_code != 200:
+        raise Exception(f"API Error: {response.status_code} - {response.text}")
+
+def check_code_quality(file_path):
+    """
+    Führt eine Code-Qualitätsprüfung mit flake8 durch.
+    Gibt eine Liste von Problemen zurück, falls welche gefunden werden.
+    """
+    try:
+        result = subprocess.run(
+            ["flake8", file_path, "--format=json"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        if result.returncode == 0:
+            logger.info("Code-Qualitätsprüfung bestanden: %s", file_path)
+            return []  # Keine Probleme gefunden
+        issues = json.loads(result.stdout)
+        logger.warning("Code-Qualitätsprobleme gefunden in %s: %d", file_path, len(issues))
+        return issues
+    except Exception as e:
+        logger.error("Fehler bei der Code-Qualitätsprüfung für %s: %s", file_path, str(e))
+        raise Exception(f"Fehler bei der Code-Qualitätsprüfung: {str(e)}")
+
+def suggest_code_changes(file_path):
+    """
+    Führt eine automatische Formatierung mit black durch und gibt die Änderungen zurück.
+    """
+    try:
+        result = subprocess.run(
+            ["black", "--diff", file_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        if result.returncode == 0:
+            return result.stdout  # Gibt die vorgeschlagenen Änderungen zurück
+        else:
+            raise Exception(f"Fehler bei der Code-Formatierung: {result.stderr}")
+    except Exception as e:
+        raise Exception(f"Fehler bei der Code-Formatierung: {str(e)}")
+
+def detect_security_issues(file_path):
+    """
+    Führt eine Sicherheitsprüfung mit bandit durch.
+    Gibt eine Liste von Sicherheitslücken zurück, falls welche gefunden werden.
+    """
+    try:
+        bandit_config = config.get("monitoring", {}).get("bandit_config", {})
+        result = subprocess.run(
+            ["bandit", "-f", "json", "-r", file_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        if result.returncode == 0:
+            return []  # Keine Sicherheitsprobleme gefunden
+        return json.loads(result.stdout)["results"]  # Gibt die Sicherheitsprobleme zurück
+    except Exception as e:
+        raise Exception(f"Fehler bei der Sicherheitsprüfung: {str(e)}")
+
+def summarize_issues(file_path):
+    """
+    Führt Code-Qualitäts- und Sicherheitsprüfungen durch und gibt eine Zusammenfassung zurück.
+    """
+    quality_issues = check_code_quality(file_path)
+    security_issues = detect_security_issues(file_path)
+
+    summary = []
+    if quality_issues:
+        summary.append(f"Code-Qualitätsprobleme gefunden: {len(quality_issues)}")
+    if security_issues:
+        summary.append(f"Sicherheitsprobleme gefunden: {len(security_issues)}")
+
+    return "\n".join(summary) if summary else "Keine Probleme gefunden."

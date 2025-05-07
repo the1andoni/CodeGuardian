@@ -1,0 +1,6 @@
+discord.py
+requests
+pyyaml
+flake8
+black
+bandit

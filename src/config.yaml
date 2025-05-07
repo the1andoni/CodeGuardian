@@ -1,0 +1,19 @@
+github:
+  token: "YOUR_GITHUB_TOKEN"
+  repositories:
+    - "user/repo1"
+    - "user/repo2"
+    - "user/repo3"
+  pull_request_label: "code-quality"
+
+discord:
+  token: "YOUR_DISCORD_TOKEN"
+  channel_id: "YOUR_DISCORD_CHANNEL_ID"
+
+monitoring:
+  enabled: true
+  quality_threshold: 75
+
+notifications:
+  on_pull_request: true
+  message_template: "A new pull request has been created: **{title}** by **{author}**. View it here: {url}"

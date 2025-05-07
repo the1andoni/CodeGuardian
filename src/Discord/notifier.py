@@ -31,7 +31,8 @@ discord_channel_id = config["discord"]["channel_id"]
 headers = {"Authorization": f"token {config['github']['token']}"}
 
 # JSON-Datei für gesendete Pull Requests
-DATA_DIR = "data"
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+DATA_DIR = os.path.join(BASE_DIR, "data")
 SENT_PULL_REQUESTS_FILE = os.path.join(DATA_DIR, "sent_pull_requests.json")
 
 # Sicherstellen, dass der Ordner 'data' existiert

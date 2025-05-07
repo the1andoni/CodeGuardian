@@ -10,6 +10,7 @@ import os
 # Bot-Setup
 intents = discord.Intents.default()
 intents.messages = True
+intents.message_content = True  # Aktiviert den Zugriff auf Nachrichteninhalte
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # Konfiguration laden

@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands, tasks
+from discord import app_commands
 import requests
 import yaml
 from utils.helpers import summarize_issues
@@ -12,6 +13,7 @@ intents = discord.Intents.default()
 intents.messages = True
 intents.message_content = True  # Aktiviert den Zugriff auf Nachrichteninhalte
 bot = commands.Bot(command_prefix="!", intents=intents)
+tree = bot.tree  # Für App Commands (Slash-Befehle)
 
 # Konfiguration laden
 def load_config():
@@ -26,7 +28,7 @@ if "discord" not in config or "token" not in config["discord"]:
 discord_token = config["discord"]["token"]
 repositories = config["discord"].get("repositories", [])
 discord_channel_id = config["discord"]["channel_id"]
-headers = {"Authorization": f"token {discord_token}"}
+headers = {"Authorization": f"token {config['github']['token']}"}
 
 # JSON-Datei für gesendete Pull Requests
 DATA_DIR = "data"
@@ -47,42 +49,46 @@ async def on_ready():
     activity = discord.Game("Überwacht die Repositories")
     await bot.change_presence(status=discord.Status.online, activity=activity)
 
-    check_pull_requests.start()  # Startet die Überwachung von Pull Requests
+    # Synchronisiere die App Commands
+    await tree.sync()
+    logger.info("Slash-Befehle synchronisiert.")
 
-@bot.event
-async def on_message(message):
-    if message.guild:  # Nachricht stammt von einem Server
-        print(f"Nachricht auf Server {message.guild.name}: {message.content}")
-    else:  # Nachricht stammt aus einer PN
-        print(f"Nachricht in PN: {message.content}")
-    await bot.process_commands(message)  # Ermöglicht die Verarbeitung von Befehlen
+@tree.command(name="status", description="Zeigt den Status des Bots an.")
+async def status(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="Bot-Status",
+        description="Ich bin online und überwache deine Repositories!",
+        color=discord.Color.green()
+    )
+    await interaction.response.send_message(embed=embed)
 
-@bot.command()
-async def status(ctx):
-    await ctx.send("Ich bin online und überwache deine Repositories!")
-
-@bot.command()
-async def repo(ctx, repo_name: str):
+@tree.command(name="repo", description="Zeigt Informationen zu einem Repository an.")
+async def repo(interaction: discord.Interaction, repo_name: str):
     """Gibt Informationen zu einem Repository zurück."""
     # Falls kein "owner/" im Namen enthalten ist, füge den Standard-Owner hinzu
     if "/" not in repo_name:
-        default_owner = "the1andoni"  # Ersetze dies durch deinen GitHub-Benutzernamen
-        repo_name = f"{default_owner}/{repo_name}"
+        repo_name = f"the1andoni/{repo_name}"
 
     url = f"https://api.github.com/repos/{repo_name}"
     response = requests.get(url, headers=headers)
     if response.status_code == 200:
         repo_data = response.json()
-        message = (
-            f"**Repository:** {repo_data['full_name']}\n"
-            f"**Beschreibung:** {repo_data.get('description', 'Keine Beschreibung')}\n"
-            f"**Stars:** {repo_data['stargazers_count']}\n"
-            f"**Forks:** {repo_data['forks_count']}\n"
-            f"**Offene Issues:** {repo_data['open_issues_count']}"
+        embed = discord.Embed(
+            title=f"Repository: {repo_data['full_name']}",
+            description=repo_data.get('description', 'Keine Beschreibung'),
+            color=discord.Color.blue()
         )
-        await ctx.send(message)
+        embed.add_field(name="Stars", value=repo_data['stargazers_count'], inline=True)
+        embed.add_field(name="Forks", value=repo_data['forks_count'], inline=True)
+        embed.add_field(name="Offene Issues", value=repo_data['open_issues_count'], inline=True)
+        await interaction.response.send_message(embed=embed)
     else:
-        await ctx.send(f"Fehler: Repository {repo_name} konnte nicht gefunden werden.")
+        embed = discord.Embed(
+            title="Fehler",
+            description=f"Repository {repo_name} konnte nicht gefunden werden.",
+            color=discord.Color.red()
+        )
+        await interaction.response.send_message(embed=embed)
 
 @tasks.loop(minutes=5)  # Überprüft alle 5 Minuten auf neue Pull Requests
 async def check_pull_requests():
@@ -109,14 +115,15 @@ async def check_pull_requests():
                             file_path = file["filename"]
                             issues_summary += f"\n**{file_path}**:\n{summarize_issues(file_path)}"
 
-                        # Nachricht erstellen
-                        message = (
-                            f"**Neuer Pull Request:** {pull['title']}\n"
-                            f"**Autor:** {pull['user']['login']}\n"
-                            f"**Link:** {pull['html_url']}\n"
-                            f"**Prüfungsergebnisse:**\n{issues_summary}"
+                        # Nachricht als Embed erstellen
+                        embed = discord.Embed(
+                            title=f"Neuer Pull Request: {pull['title']}",
+                            description=f"Autor: {pull['user']['login']}\n[Zum Pull Request]({pull['html_url']})",
+                            color=discord.Color.green()
                         )
-                        await channel.send(message)
+                        embed.add_field(name="Prüfungsergebnisse", value=issues_summary or "Keine Probleme gefunden.")
+                        await channel.send(embed=embed)
+
                         logger.info(
                             "Neuer Pull Request geprüft: %s von %s",
                             pull["title"],

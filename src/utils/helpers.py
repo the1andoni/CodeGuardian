@@ -1,3 +1,4 @@
+import requests
 import subprocess
 import json
 import yaml
@@ -110,3 +111,18 @@ def summarize_issues(file_path):
         summary.append(f"Sicherheitsprobleme gefunden: {len(security_issues)}")
 
     return "\n".join(summary) if summary else "Keine Probleme gefunden."
+
+def comment_on_pull_request(repo, pull_number, comment, headers):
+    """
+    Fügt einen Kommentar zu einem Pull Request hinzu.
+    :param repo: Name des Repositories (z. B. "user/repo").
+    :param pull_number: Nummer des Pull Requests.
+    :param comment: Der Kommentartext.
+    :param headers: HTTP-Header mit Authentifizierung.
+    """
+    url = f"https://api.github.com/repos/{repo}/issues/{pull_number}/comments"
+    response = requests.post(url, headers=headers, json={"body": comment})
+    if response.status_code == 201:
+        logger.info(f"Kommentar erfolgreich hinzugefügt: {comment}")
+    else:
+        logger.error(f"Fehler beim Hinzufügen des Kommentars: {response.status_code} - {response.text}")

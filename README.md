@@ -18,7 +18,7 @@ CodeGuardian ist ein Bot, der entwickelt wurde, um automatisierte Aufgaben auf G
 CodeGuardian
 ├── src
 │   ├── bot.py                # Hauptdatei zum Starten des Bots
-|   ├── config.yaml               # Konfigurationsdatei für den Bot
+|   ├── config.yaml           # Konfigurationsdatei für den Bot
 │   ├── github
 │   │   ├── __init__.py       # Initialisierung des GitHub-Moduls
 │   │   └── monitor.py        # Überwachung und Analyse von Pull Requests

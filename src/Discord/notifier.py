@@ -43,16 +43,22 @@ sent_pull_requests = load_json(SENT_PULL_REQUESTS_FILE)
 
 @bot.event
 async def on_ready():
-    logger.info("Bot is online as %s", bot.user)
-    print(f"Bot is online as {bot.user}")
+    try:
+        logger.info("Bot is online as %s", bot.user)
+        print(f"Bot is online as {bot.user}")
 
-    # Setze den Status und die Aktivität des Bots
-    activity = discord.Game("Überwacht die Repositories")
-    await bot.change_presence(status=discord.Status.online, activity=activity)
+        # Setze den Status und die Aktivität des Bots
+        activity = discord.Game("Überwacht die Repositories")
+        await bot.change_presence(status=discord.Status.online, activity=activity)
 
-    # Synchronisiere die App Commands
-    await tree.sync()
-    logger.info("Slash-Befehle synchronisiert.")
+        # Synchronisiere die App Commands
+        await tree.sync()
+        logger.info("Slash-Befehle synchronisiert.")
+    except Exception as e:
+        # Fehler beim Starten des Bots
+        logger.error("Fehler beim Starten des Bots: %s", str(e))
+        activity = discord.Game("Fehler: Bot konnte nicht starten")
+        await bot.change_presence(status=discord.Status.dnd, activity=activity)
 
 @tree.command(name="status", description="Zeigt den Status des Bots an.")
 async def status(interaction: discord.Interaction):
@@ -94,57 +100,56 @@ async def repo(interaction: discord.Interaction, repo_name: str):
 
 @tasks.loop(minutes=5)  # Überprüft alle 5 Minuten auf neue Pull Requests
 async def check_pull_requests():
-    channel = bot.get_channel(int(discord_channel_id))
-    if not channel:
-        logger.error("Ungültige Discord-Kanal-ID: %s", discord_channel_id)
-        await bot.change_presence(status=discord.Status.dnd, activity=discord.Game("Fehler: Kanal nicht gefunden"))
-        return
+    try:
+        channel = bot.get_channel(int(discord_channel_id))
+        if not channel:
+            raise ValueError(f"Ungültige Discord-Kanal-ID: {discord_channel_id}")
 
-    for repo in repositories:
-        url = f"https://api.github.com/repos/{repo}/pulls"
-        response = requests.get(url, headers=headers)
-        if response.status_code == 200:
-            pulls = response.json()
-            for pull in pulls:
-                if str(pull["id"]) not in sent_pull_requests:
-                    # Geänderte Dateien abrufen
-                    files_url = pull["url"] + "/files"
-                    files_response = requests.get(files_url, headers=headers)
-                    if files_response.status_code == 200:
-                        files = files_response.json()
-                        issues_summary = ""
-                        for file in files:
-                            file_path = file["filename"]
-                            issues_summary += f"\n**{file_path}**:\n{summarize_issues(file_path)}"
+        for repo in repositories:
+            url = f"https://api.github.com/repos/{repo}/pulls"
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                pulls = response.json()
+                for pull in pulls:
+                    if str(pull["id"]) not in sent_pull_requests:
+                        # Geänderte Dateien abrufen
+                        files_url = pull["url"] + "/files"
+                        files_response = requests.get(files_url, headers=headers)
+                        if files_response.status_code == 200:
+                            files = files_response.json()
+                            issues_summary = ""
+                            for file in files:
+                                file_path = file["filename"]
+                                issues_summary += f"\n**{file_path}**:\n{summarize_issues(file_path)}"
 
-                        # Nachricht als Embed erstellen
-                        embed = discord.Embed(
-                            title=f"Neuer Pull Request: {pull['title']}",
-                            description=f"Autor: {pull['user']['login']}\n[Zum Pull Request]({pull['html_url']})",
-                            color=discord.Color.green()
-                        )
-                        embed.add_field(name="Prüfungsergebnisse", value=issues_summary or "Keine Probleme gefunden.")
-                        await channel.send(embed=embed)
+                            # Nachricht als Embed erstellen
+                            embed = discord.Embed(
+                                title=f"Neuer Pull Request: {pull['title']}",
+                                description=f"Autor: {pull['user']['login']}\n[Zum Pull Request]({pull['html_url']})",
+                                color=discord.Color.green()
+                            )
+                            embed.add_field(name="Prüfungsergebnisse", value=issues_summary or "Keine Probleme gefunden.")
+                            await channel.send(embed=embed)
 
-                        logger.info(
-                            "Neuer Pull Request geprüft: %s von %s",
-                            pull["title"],
-                            pull["user"]["login"],
-                        )
-                        # Speichere den Pull Request in der JSON-Datei
-                        sent_pull_requests[str(pull["id"])] = {
-                            "title": pull["title"],
-                            "author": pull["user"]["login"],
-                            "url": pull["html_url"],
-                        }
-                        save_json(SENT_PULL_REQUESTS_FILE, sent_pull_requests)
-        else:
-            logger.error(
-                "Fehler beim Abrufen von Pull Requests für %s: %s",
-                repo,
-                response.status_code,
-            )
-            await bot.change_presence(status=discord.Status.dnd, activity=discord.Game("Fehler: API-Problem"))
+                            logger.info(
+                                "Neuer Pull Request geprüft: %s von %s",
+                                pull["title"],
+                                pull["user"]["login"],
+                            )
+                            # Speichere den Pull Request in der JSON-Datei
+                            sent_pull_requests[str(pull["id"])] = {
+                                "title": pull["title"],
+                                "author": pull["user"]["login"],
+                                "url": pull["html_url"],
+                            }
+                            save_json(SENT_PULL_REQUESTS_FILE, sent_pull_requests)
+            else:
+                raise Exception(f"Fehler beim Abrufen von Pull Requests für {repo}: {response.status_code}")
+    except Exception as e:
+        # Fehler beim Überprüfen der Pull Requests
+        logger.error("Fehler beim Überprüfen der Pull Requests: %s", str(e))
+        activity = discord.Game("Fehler: Überprüfung fehlgeschlagen")
+        await bot.change_presence(status=discord.Status.dnd, activity=activity)
 
 # Startet den Bot
 bot.run(config["discord"]["token"])

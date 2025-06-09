@@ -17,3 +17,4 @@ monitoring:
 notifications:
   on_pull_request: true
   message_template: "A new pull request has been created: **{title}** by **{author}**. View it here: {url}"
+  issue_template: "Problems were found in pull request **{title}** by **{author}**:\n{issues}\n[View PR]({url})"

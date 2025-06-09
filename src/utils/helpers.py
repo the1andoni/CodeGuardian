@@ -126,3 +126,25 @@ def comment_on_pull_request(repo, pull_number, comment, headers):
         logger.info(f"Kommentar erfolgreich hinzugefügt: {comment}")
     else:
         logger.error(f"Fehler beim Hinzufügen des Kommentars: {response.status_code} - {response.text}")
+
+def send_discord_issue_notification(repo, pull, issues_summary):
+    """
+    Sendet eine Nachricht an Discord, wenn Issues gefunden wurden.
+    """
+    import os
+    webhook_url = os.environ.get("DISCORD_ISSUE_WEBHOOK_URL")
+    if not webhook_url:
+        return
+    embed = {
+        "title": f"Issues in Pull Request: {pull['title']}",
+        "description": f"Autor: {pull['user']['login']}\n[Zum Pull Request]({pull['html_url']})",
+        "color": 0xFF0000,
+        "fields": [
+            {"name": "Prüfungsergebnisse", "value": issues_summary or "Keine Probleme gefunden."}
+        ]
+    }
+    data = {"embeds": [embed]}
+    try:
+        requests.post(webhook_url, json=data)
+    except Exception as e:
+        logger.error(f"Fehler beim Senden der Discord-Issue-Nachricht: {e}")

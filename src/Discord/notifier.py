@@ -8,6 +8,7 @@ from utils.logger import logger
 from utils.json_helper import load_json, save_json
 import os
 from github.monitor import get_pull_request_issues
+import time
 
 # Bot-Setup
 intents = discord.Intents.default()
@@ -46,12 +47,14 @@ issue_template = notifications.get(
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))  # Gehe drei Ebenen nach oben
 DATA_DIR = os.path.join(BASE_DIR, "data")
 SENT_PULL_REQUESTS_FILE = os.path.join(DATA_DIR, "sent_pull_requests.json")
+ISSUES_FILE = os.path.join(DATA_DIR, "sent_issues.json")
 
 # Sicherstellen, dass der Ordner 'data' existiert
 os.makedirs(DATA_DIR, exist_ok=True)
 
-# Lade bereits gesendete Pull Requests
+# Lade bereits gesendete Pull Requests und Issues
 sent_pull_requests = load_json(SENT_PULL_REQUESTS_FILE)
+sent_issues = load_json(ISSUES_FILE)
 
 @bot.event
 async def on_ready():
@@ -69,6 +72,7 @@ async def on_ready():
 
         # Starte die neue Überwachungs-Task
         check_all_pull_requests_and_issues.start()
+        check_github_issues.start()
     except Exception as e:
         # Fehler beim Starten des Bots
         logger.error("Fehler beim Starten des Bots: %s", str(e))
@@ -173,6 +177,45 @@ async def check_all_pull_requests_and_issues():
         logger.error("Fehler beim Überprüfen der Pull Requests: %s", str(e))
         activity = discord.Game("Fehler: Überprüfung fehlgeschlagen")
         await bot.change_presence(status=discord.Status.dnd, activity=activity)
+
+@tasks.loop(minutes=5)
+async def check_github_issues():
+    try:
+        channel = bot.get_channel(int(discord_channel_id))
+        if not channel:
+            raise ValueError(f"Ungültige Discord-Kanal-ID: {discord_channel_id}")
+
+        for repo in repositories:
+            url = f"https://api.github.com/repos/{repo}/issues"
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                issues = response.json()
+                for issue in issues:
+                    # Pull Requests sind auch Issues, aber haben einen 'pull_request'-Key
+                    if "pull_request" in issue:
+                        continue
+                    issue_id = str(issue["id"])
+                    if issue_id not in sent_issues:
+                        embed = discord.Embed(
+                            title=f"New Issue: {issue['title']}",
+                            description=issue.get("body", "No description"),
+                            color=discord.Color.orange(),
+                            url=issue["html_url"]
+                        )
+                        embed.add_field(name="Author", value=issue["user"]["login"])
+                        embed.add_field(name="Repository", value=repo)
+                        await channel.send(embed=embed)
+                        sent_issues[issue_id] = {
+                            "title": issue["title"],
+                            "author": issue["user"]["login"],
+                            "url": issue["html_url"],
+                            "created_at": issue["created_at"]
+                        }
+                        save_json(ISSUES_FILE, sent_issues)
+            else:
+                logger.error(f"Fehler beim Abrufen der Issues von {repo}: {response.status_code}")
+    except Exception as e:
+        logger.error("Fehler beim Überprüfen der Issues: %s", str(e))
 
 # Startet den Bot
 bot.run(config["discord"]["token"])

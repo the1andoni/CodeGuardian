@@ -7,6 +7,7 @@ from utils.helpers import summarize_issues
 from utils.logger import logger
 from utils.json_helper import load_json, save_json
 import os
+from github.monitor import get_pull_request_issues
 
 # Bot-Setup
 intents = discord.Intents.default()
@@ -54,6 +55,9 @@ async def on_ready():
         # Synchronisiere die App Commands
         await tree.sync()
         logger.info("Slash-Befehle synchronisiert.")
+
+        # Starte die neue Überwachungs-Task
+        check_all_pull_requests_and_issues.start()
     except Exception as e:
         # Fehler beim Starten des Bots
         logger.error("Fehler beim Starten des Bots: %s", str(e))
@@ -147,6 +151,43 @@ async def check_pull_requests():
                 raise Exception(f"Fehler beim Abrufen von Pull Requests für {repo}: {response.status_code}")
     except Exception as e:
         # Fehler beim Überprüfen der Pull Requests
+        logger.error("Fehler beim Überprüfen der Pull Requests: %s", str(e))
+        activity = discord.Game("Fehler: Überprüfung fehlgeschlagen")
+        await bot.change_presence(status=discord.Status.dnd, activity=activity)
+
+@tasks.loop(minutes=5)
+async def check_all_pull_requests_and_issues():
+    try:
+        channel = bot.get_channel(int(discord_channel_id))
+        if not channel:
+            raise ValueError(f"Ungültige Discord-Kanal-ID: {discord_channel_id}")
+
+        # Hole alle offenen PRs und deren Issues
+        pr_issues = get_pull_request_issues()
+        for repo, pull, issues_summary in pr_issues:
+            # Prüfe, ob wir diesen PR schon gemeldet haben (wie gehabt)
+            if str(pull["id"]) not in sent_pull_requests or issues_summary.strip() != "Keine Probleme gefunden.":
+                embed = discord.Embed(
+                    title=f"Issues in Pull Request: {pull['title']}",
+                    description=f"Autor: {pull['user']['login']}\n[Zum Pull Request]({pull['html_url']})",
+                    color=discord.Color.red() if issues_summary.strip() != "Keine Probleme gefunden." else discord.Color.green()
+                )
+                embed.add_field(name="Prüfungsergebnisse", value=issues_summary or "Keine Probleme gefunden.")
+                await channel.send(embed=embed)
+
+                logger.info(
+                    "Pull Request geprüft: %s von %s",
+                    pull["title"],
+                    pull["user"]["login"],
+                )
+                # Speichere den Pull Request in der JSON-Datei
+                sent_pull_requests[str(pull["id"])] = {
+                    "title": pull["title"],
+                    "author": pull["user"]["login"],
+                    "url": pull["html_url"],
+                }
+                save_json(SENT_PULL_REQUESTS_FILE, sent_pull_requests)
+    except Exception as e:
         logger.error("Fehler beim Überprüfen der Pull Requests: %s", str(e))
         activity = discord.Game("Fehler: Überprüfung fehlgeschlagen")
         await bot.change_presence(status=discord.Status.dnd, activity=activity)

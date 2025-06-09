@@ -40,7 +40,7 @@ pr_template = notifications.get(
 )
 issue_template = notifications.get(
     "issue_template",
-    "Es wurden Probleme im Pull Request **{title}** von **{author}** gefunden:\n{issues}\n[Zum PR]({url})"
+    "Problems were found in pull request **{title}** by **{author}**:\n{issues}\n[View PR]({url})"
 )
 
 # JSON-Datei für gesendete Pull Requests

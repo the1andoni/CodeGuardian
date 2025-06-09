@@ -27,9 +27,20 @@ if "discord" not in config or "token" not in config["discord"]:
     raise ValueError("Fehlende Discord-Konfiguration in config.yaml")
 
 discord_token = config["discord"]["token"]
-repositories = config["discord"].get("repositories", [])
+repositories = config["github"].get("repositories", [])  # <-- github statt discord!
 discord_channel_id = config["discord"]["channel_id"]
 headers = {"Authorization": f"token {config['github']['token']}"}
+
+# Templates aus der Config laden
+notifications = config.get("notifications", {})
+pr_template = notifications.get(
+    "message_template",
+    "A new pull request has been created: **{title}** by **{author}**. View it here: {url}"
+)
+issue_template = notifications.get(
+    "issue_template",
+    "Es wurden Probleme im Pull Request **{title}** von **{author}** gefunden:\n{issues}\n[Zum PR]({url})"
+)
 
 # JSON-Datei für gesendete Pull Requests
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))  # Gehe drei Ebenen nach oben
@@ -102,59 +113,6 @@ async def repo(interaction: discord.Interaction, repo_name: str):
         )
         await interaction.response.send_message(embed=embed)
 
-@tasks.loop(minutes=5)  # Überprüft alle 5 Minuten auf neue Pull Requests
-async def check_pull_requests():
-    try:
-        channel = bot.get_channel(int(discord_channel_id))
-        if not channel:
-            raise ValueError(f"Ungültige Discord-Kanal-ID: {discord_channel_id}")
-
-        for repo in repositories:
-            url = f"https://api.github.com/repos/{repo}/pulls"
-            response = requests.get(url, headers=headers)
-            if response.status_code == 200:
-                pulls = response.json()
-                for pull in pulls:
-                    if str(pull["id"]) not in sent_pull_requests:
-                        # Geänderte Dateien abrufen
-                        files_url = pull["url"] + "/files"
-                        files_response = requests.get(files_url, headers=headers)
-                        if files_response.status_code == 200:
-                            files = files_response.json()
-                            issues_summary = ""
-                            for file in files:
-                                file_path = file["filename"]
-                                issues_summary += f"\n**{file_path}**:\n{summarize_issues(file_path)}"
-
-                            # Nachricht als Embed erstellen
-                            embed = discord.Embed(
-                                title=f"Neuer Pull Request: {pull['title']}",
-                                description=f"Autor: {pull['user']['login']}\n[Zum Pull Request]({pull['html_url']})",
-                                color=discord.Color.green()
-                            )
-                            embed.add_field(name="Prüfungsergebnisse", value=issues_summary or "Keine Probleme gefunden.")
-                            await channel.send(embed=embed)
-
-                            logger.info(
-                                "Neuer Pull Request geprüft: %s von %s",
-                                pull["title"],
-                                pull["user"]["login"],
-                            )
-                            # Speichere den Pull Request in der JSON-Datei
-                            sent_pull_requests[str(pull["id"])] = {
-                                "title": pull["title"],
-                                "author": pull["user"]["login"],
-                                "url": pull["html_url"],
-                            }
-                            save_json(SENT_PULL_REQUESTS_FILE, sent_pull_requests)
-            else:
-                raise Exception(f"Fehler beim Abrufen von Pull Requests für {repo}: {response.status_code}")
-    except Exception as e:
-        # Fehler beim Überprüfen der Pull Requests
-        logger.error("Fehler beim Überprüfen der Pull Requests: %s", str(e))
-        activity = discord.Game("Fehler: Überprüfung fehlgeschlagen")
-        await bot.change_presence(status=discord.Status.dnd, activity=activity)
-
 @tasks.loop(minutes=5)
 async def check_all_pull_requests_and_issues():
     try:
@@ -162,26 +120,50 @@ async def check_all_pull_requests_and_issues():
         if not channel:
             raise ValueError(f"Ungültige Discord-Kanal-ID: {discord_channel_id}")
 
-        # Hole alle offenen PRs und deren Issues
         pr_issues = get_pull_request_issues()
         for repo, pull, issues_summary in pr_issues:
-            # Prüfe, ob wir diesen PR schon gemeldet haben (wie gehabt)
-            if str(pull["id"]) not in sent_pull_requests or issues_summary.strip() != "Keine Probleme gefunden.":
-                embed = discord.Embed(
-                    title=f"Issues in Pull Request: {pull['title']}",
-                    description=f"Autor: {pull['user']['login']}\n[Zum Pull Request]({pull['html_url']})",
-                    color=discord.Color.red() if issues_summary.strip() != "Keine Probleme gefunden." else discord.Color.green()
-                )
-                embed.add_field(name="Prüfungsergebnisse", value=issues_summary or "Keine Probleme gefunden.")
-                await channel.send(embed=embed)
+            pr_id = str(pull["id"])
+            is_new = pr_id not in sent_pull_requests
+            has_issues = issues_summary.strip() and issues_summary.strip() != "Keine Probleme gefunden."
+
+            # Nur neue PRs oder neue Issues melden
+            if is_new or has_issues:
+                if has_issues:
+                    # Issue-Template verwenden
+                    msg = issue_template.format(
+                        title=pull["title"],
+                        author=pull["user"]["login"],
+                        issues=issues_summary,
+                        url=pull["html_url"]
+                    )
+                    embed = discord.Embed(
+                        title=f"Issues in Pull Request: {pull['title']}",
+                        description=f"Autor: {pull['user']['login']}\n[Zum Pull Request]({pull['html_url']})",
+                        color=discord.Color.red()
+                    )
+                    embed.add_field(name="Prüfungsergebnisse", value=issues_summary or "Keine Probleme gefunden.")
+                else:
+                    # PR-Template verwenden
+                    msg = pr_template.format(
+                        title=pull["title"],
+                        author=pull["user"]["login"],
+                        url=pull["html_url"]
+                    )
+                    embed = discord.Embed(
+                        title=f"Neuer Pull Request: {pull['title']}",
+                        description=f"Autor: {pull['user']['login']}\n[Zum Pull Request]({pull['html_url']})",
+                        color=discord.Color.green()
+                    )
+                    embed.add_field(name="Prüfungsergebnisse", value=issues_summary or "Keine Probleme gefunden.")
+
+                await channel.send(content=msg, embed=embed)
 
                 logger.info(
                     "Pull Request geprüft: %s von %s",
                     pull["title"],
                     pull["user"]["login"],
                 )
-                # Speichere den Pull Request in der JSON-Datei
-                sent_pull_requests[str(pull["id"])] = {
+                sent_pull_requests[pr_id] = {
                     "title": pull["title"],
                     "author": pull["user"]["login"],
                     "url": pull["html_url"],
